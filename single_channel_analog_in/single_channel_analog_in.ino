@@ -1,34 +1,37 @@
+
 const uint Fs = 1000; // sampling rate
 IntervalTimer t1;
-
-const uint analogInPin = 33;
-const uint analogOutPin = 38;
-volatile uint16_t valIn = 0;
 volatile uint32_t loopCount= 0;
 
+
+
+const uint analogOutPin = 38;
+volatile bool Go = false;
 const uint waveDur = 100;
 const uint waveIPI = 100;
 const uint nRep = 5;
+
+volatile uint16_t waveAmp = 0;
+const uint trialITI = 5000; 
+
 volatile uint16_t waveVal = 0;
+volatile uint16_t priorWaveVal = 0;
+volatile bool waveValChange = false;
 
 volatile uint durCntr = 0;
 volatile uint ipiCntr = 0;
-volatile uint itiCntr = 0;
 volatile uint repCntr = 0;
-
-const uint trialITI = 5000; 
-
-volatile bool sigOn = false;
-volatile bool ipiOn = false;
-
-volatile uint16_t waveAmp = 1023;
+volatile uint itiCntr = 0;
 
 // Serial coms
 const byte numChars = 255;
 volatile char receivedChars[numChars];
 volatile bool newData = false;
+volatile char msgCode; // "G" - go or stop, "A" - pulse amplitude  
+volatile uint32_t msgVal; // parameter value
 
 void setup() {
+
   // put your setup code here, to run once:
   Serial.begin(115200); // baud rate here doesn't matter for teensy
   Serial.println("Connected");
@@ -37,20 +40,25 @@ void setup() {
   analogReadResolution(10);
   analogWriteResolution(10);
 
+  analogWrite(analogOutPin,0);
+  
 }
 
 void it(){
 
   //if (loopCount % 10 == 0){
   valIn = analogRead(analogInPin);  // read the input pin
-  Serial.println(valIn);     
-  //} 
-  
+  Serial.println(valIn);
+    
   setWaveVal();
   recvWithStartEndMarkers();
   parseData();
 
-  analogWrite(analogOutPin,waveVal);
+  if (Go){
+    if (waveValChange){
+      analogWrite(analogOutPin,waveVal);
+    }
+  }
   
   loopCount++;
 
@@ -58,33 +66,26 @@ void it(){
 
 void setWaveVal(){
 
-  if (itiCntr >= trialITI) {
+  priorWaveVal = waveVal;
+
+  if (itiCntr > trialITI) {
     
-    if (repCntr <= nRep) {
+    if (repCntr < nRep) {
 
-      if (sigOn && durCntr < waveDur){ // not at end of pulse so continue
+      if (durCntr < waveDur){ // not at end of pulse so continue
         waveVal = waveAmp;
-        durCntr++;
-      } else if (sigOn && durCntr >= waveDur){ //end of pulse
-        sigOn = false;
-        ipiOn = true;
+        durCntr++;        
+      } else if (ipiCntr < waveIPI){ //ipi
         waveVal = 0;
-        ipiCntr = 0;
+        ipiCntr++;        
+      } else { //end of a pulse
         repCntr++;
-      } else if (ipiOn && ipiCntr < waveIPI){ // in ipi
-        ipiCntr++;
-      } else if (ipiOn && ipiCntr >= waveIPI){ // end of ipi
-        sigOn = true;
-        ipiOn = false;
         durCntr = 0;
+        ipiCntr = 0;          
       }
-
     } else { // end of stim train
   
-      waveVal = 0;
-      sigOn = false;
-      ipiOn = true;
-    
+      waveVal = 0;      
       durCntr = 0;
       ipiCntr = 0;
       repCntr = 0;
@@ -94,6 +95,14 @@ void setWaveVal(){
 
   } else {
     itiCntr++;
+    //Serial.print("itiCntr: ");
+    //Serial.println(itiCntr);
+  }
+
+  if (priorWaveVal == waveVal){
+    waveValChange = false;
+  } else {
+    waveValChange = true;
   }
 
 }
@@ -133,10 +142,31 @@ void parseData() { // split the data into its parts
 
   if (newData == true) {
 
-    char * ptr;
+    volatile char * strtokIndx; // this is used by strtok() as an index
 
-    ptr = strtok((char *) receivedChars,",");
-    waveAmp = atoi(ptr);
+    strtokIndx = strtok((char *) receivedChars,",");      // get the first part - the string
+    msgCode = *strtokIndx;
+    
+    
+    strtokIndx = strtok(NULL, ","); // this continues where the previous call left off
+    msgVal = atoi((const char *) strtokIndx);     // convert this part to an integer
+
+
+    Serial.print("Message Recieved: ");
+    Serial.print(msgCode);
+    Serial.print(",");
+    Serial.println(msgVal);
+    
+    if (msgCode == 'G'){ 
+      if (msgVal == 1){
+        Go = true;
+      }  else if (msgVal == 0){
+        Go = false;
+      }
+    } else if (msgCode == 'A'){
+      waveAmp = msgVal;
+    }
+    
     newData = false;
 
   }
