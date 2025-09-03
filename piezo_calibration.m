@@ -120,6 +120,7 @@ while go_on
         end
         figure,
         plot(voltages,vals,'-ok')
+        
     end
 
     if btn_stop.Value
