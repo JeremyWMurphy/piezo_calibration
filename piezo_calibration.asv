@@ -72,6 +72,9 @@ while go_on
 
         f.UserData.Next = false;
 
+        % record whatever is in the prior field
+        fprintf(data_fid,'%s,%s\n',measure_fields(cur_dat_field).Value,num2str(voltages(cur_dat_field)));
+
         % change the color to normal of prior voltage label
         dat_lbls(cur_dat_field).BackgroundColor = [0 0 0];
 
@@ -109,22 +112,21 @@ while go_on
     if btn_plt.Value
 
         btn_plt.Value = false;
-
-        vals = zeros(size(measure_fields));
-        for i = 1:size(measure_fields,1)
-            vals(i) = str2double(measure_fields(i).Value);
-            fprintf(data_fid,'%s,%s\n',measure_fields(i).Value,num2str(voltages(i)));
+        fields = gl.Children(14:2:24);
+        vals = zeros(size(fields));
+        for i = 1:size(fields,1)
+            vals(i) = str2double(fields(i).Value);
         end
         figure, hold on
         plot(voltages,vals,'ok')
-        mod_fit = fit(voltages',vals,'logistic4');      
-        plot(mod_fit,'r')
+        f = fit(voltages',vals','logistic4');      
+        plot(f,'r')
         ylim([0 vals(end)+100])
         xlabel('Voltage')
         ylabel('\muM')
         exportgraphics(gcf,[exp_pth '\data.png'],'Resolution',300)
-        save([exp_pth '\model_fit.mat'],'mod_fit','voltages','vals');
-  
+        save([exp_pth '\model_fit.mat'],'f','voltages','vals');
+        
     end
 
     if btn_stop.Value

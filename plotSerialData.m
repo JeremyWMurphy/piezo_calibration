@@ -1,16 +1,16 @@
 function plotSerialData(src,~,ax,ax2,up_every)
 
-v = read(src,up_every,'char');
-v = extractBetween(v,'<','>');
+data = read(src,up_every,'char');
 
-if ~isempty(v)
+if ~isempty(data)
 
-    v = cellfun(@(x) eval(['[' x ']']),v,'UniformOutput',false);
-    v = [v{:}];
-    dat = [v(1:2:end)' v(2:2:end)'];
-    ax.Children(1).set('Ydata',[ax.Children(1).YData(size(dat,1)+1:end) dat(:,1)'./1023]);
-    ax2.Children(1).set('Ydata',[ax2.Children(1).YData(size(dat,1)+1:end) interp1([0 4095],[0 5],dat(:,2)')]);
-    drawnow
+    strt = find(data=='<',1,'first');
+    fin = find(data=='>',1,'last');
+    data = data(strt:fin);
+    data = sscanf(data,'<%d,%d>\n');    
+    data = reshape(data,2,[])';
+    ax.Children(1).set('Ydata',[ax.Children(1).YData(size(data,1)+1:end) data(:,1)'./1023]);
+    ax2.Children(1).set('Ydata',[ax2.Children(1).YData(size(data,1)+1:end) interp1([0 4095],[0 5],data(:,2)')]);
 
 end
 
