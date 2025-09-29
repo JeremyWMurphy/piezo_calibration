@@ -1,4 +1,4 @@
-function fig = make_ui_figure(n_disp)
+function fig = make_ui_figure(n_disp,pth)
 
 edit_name_loc = {1,[1 2]};
 pth_txt_loc = {1,[4 10]};
@@ -10,7 +10,7 @@ plt_btn_loc = {15,4};
 stp_btn_loc = {15,15};
 
 ax_loc = {[2 10],[4 14]};
-notes_loc = {[2 7],[1 3]};
+
 chan_lbl_loc = {1,15};
 chan_dd_loc = {2,15};
 wave_lbl_loc = {3,15};
@@ -23,9 +23,9 @@ base_edit_loc = {10,15};
 base_lbl_loc = {9,15};
 rep_edit_loc = {12,15};
 rep_lbl_loc = {11,15};
+
 ax2_loc = {[11 15],[4 14]};
 
-pth = 'C:\Users\jerem\Desktop\';
 default_id = char(datetime('now','format','yyyy-MM-dd''_T''HH-mm-ss'));
 
 % main figure
@@ -110,17 +110,17 @@ dat_tbl_lbls{1} = uilabel(gl, ...
     'BackgroundColor',[0 0 0],...
     'FontColor',[0 1 0]);
 
-dat_tbl_lbls{1}.Layout.Row = 8;
+dat_tbl_lbls{1}.Layout.Row = 2;
 dat_tbl_lbls{1}.Layout.Column = 2;
 
 dat_tbl_lbls{2} = uilabel(gl, ...
     'Text','microns',...
     'BackgroundColor',[0 0 0],...
     'FontColor',[0 1 0]);
-dat_tbl_lbls{2}.Layout.Row = 8;
+dat_tbl_lbls{2}.Layout.Row = 2;
 dat_tbl_lbls{2}.Layout.Column = 3;
 
-r = 9:14;
+r = 3:12;
 c = [2 3];
 
 vlbls = {};
@@ -150,22 +150,18 @@ ax.NextPlot = 'add';
 ax.Color = [0 0 0];
 ax.XColor = [0 1 0];
 ax.YColor = [0 1 0];
-ax.YLim = [-1 2];
+ax.YLim = [-0.1 1.1];
 ax.Title.Color = [1 0 1];
 ax.Title.FontSize = 12;
 ax.Title.FontWeight = 'normal';
 ax.Title.String = 'Beam-Break Data';
 ax.YTick = [-1 0 1 2];
 ax.XTick = [];
+ax.LineWidth = 1;
+
 nan_vec = nan(n_disp,1);
 plot(ax,1:n_disp,nan_vec,'m'); % piezo signal
-
-notes = uitextarea(gl);
-notes.Layout.Row = notes_loc{1};
-notes.Layout.Column = notes_loc{2};
-notes.BackgroundColor = [0 0 0];
-notes.FontColor = [0 1 0];
-notes.Value = {'notes here...'};
+ax.Children(1).LineWidth = 2;
 
 chan_dd = uidropdown(gl,Items={'0','1','2','3'},ItemsData=['0';'1';'2';'3']);
 chan_dd.Layout.Row = chan_dd_loc{1};
@@ -246,14 +242,16 @@ ax2.NextPlot = 'add';
 ax2.Color = [0 0 0];
 ax2.XColor = [0 1 0];
 ax2.YColor = [0 1 0];
-ax2.YLim = [-1 6];
+ax2.YLim = [-0.1 5.1];
 ax2.Title.Color = [1 0 1];
 ax2.Title.FontSize = 12;
 ax2.Title.FontWeight = 'normal';
 ax2.Title.String = 'Piezo Data';
 ax2.YTick = [-1 0 2 4 6];
 ax2.XTick = [];
+ax2.LineWidth = 1;
 plot(ax2,1:n_disp,nan_vec,'y'); % piezo signal
+ax2.Children.LineWidth = 1;
 
 end
 
