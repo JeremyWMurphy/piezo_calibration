@@ -5,7 +5,7 @@ if nargin < 1
 end
 
 % parameters
-serial_port = 'COM5';
+serial_port = 'COM3';
 n_disp = 5e3;
 up_every = 10000;
 

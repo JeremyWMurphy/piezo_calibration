@@ -9,6 +9,15 @@ const uint waveMax = 4095; // it's a 12bit dac, so this will always be the max v
 const uint analogInPin = 14;
 volatile uint16_t valIn = 0;
 
+const int DIR = 6; // direction of stepper
+const int STEP = 5; // one low-high-low transition = 1 step, doesnt seem to like < 5 us between shift
+const int VZ = 19; // analog joystick signal for vertical direction
+const int SEL = 17; // press down on joystick to toggle speed hi/lo
+const int TARE = 18; // press tare button to zero stepper position
+
+const int highSpeed = 5;
+const int lowSpeed = 200;
+
 volatile bool fire = false;
 
 const uint ITI = Fs * 5;
