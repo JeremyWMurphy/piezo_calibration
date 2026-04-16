@@ -9,7 +9,7 @@ if ~isempty(data)
     data = data(strt:fin);
     data = sscanf(data,'<%d,%d>\n');    
     data = reshape(data,2,[])';
-    ax.Children(1).set('Ydata',[ax.Children(1).YData(size(data,1)+1:end) data(:,1)'./1023]);
+    ax.Children(1).set('Ydata',[ax.Children(1).YData(size(data,1)+1:end) data(:,1)']);
     ax2.Children(1).set('Ydata',[ax2.Children(1).YData(size(data,1)+1:end) interp1([0 4095],[0 5],data(:,2)')]);
 
 end

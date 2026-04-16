@@ -109,19 +109,35 @@ while go_on
     if btn_plt.Value
 
         btn_plt.Value = false;
+
         vals = zeros(size(measure_fields));
         for i = 1:size(measure_fields,1)
             vals(i) = str2double(measure_fields(i).Value);
-            fprintf(data_fid,'%s,%s\n',measure_fields(i).Value,num2str(voltages(i)));
         end
-        mod_fit = fit(voltages',vals,'logistic4');      
-        save([exp_pth '\model_fit.mat'],'mod_fit','voltages','vals');
 
+        f_out = figure(); hold on
+        ax_out = axes(f_out);
+        
+        plot(f_out,voltages,vals,'-ow')
+        mod_fit = fit(voltages',vals,'logistic4');      
+        plot(f_out,mod_fit,'r')
+        ylim([0 vals(end)+100])
+        xlabel('Voltage')
+        ylabel('\muM')
+        exportgraphics(f_out,[exp_pth '\data.png'],'Resolution',300)
+        save([exp_pth '\model_fit.mat'],'mod_fit','voltages','vals');
+  
     end
 
     if btn_stop.Value
 
         fprintf('\nAborted...\n')
+
+        vals = zeros(size(measure_fields));
+        for i = 1:size(measure_fields,1)
+            vals(i) = str2double(measure_fields(i).Value);
+            fprintf(data_fid,'%s,%s\n',measure_fields(i).Value,num2str(voltages(i)));
+        end
 
         for i = 0:3
             msg_out = ['<' num2str(i) ',0,0,0,0,0,0>'];
