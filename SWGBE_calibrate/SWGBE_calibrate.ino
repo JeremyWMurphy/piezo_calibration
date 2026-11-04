@@ -6,12 +6,18 @@
 const uint Fs = 2000; // sampling rate
 const uint waveMax = 4095; // it's a 12bit dac, so this will always be the max voltage out
 
+<<<<<<< HEAD
 const uint analogInPin = 16;
 volatile uint16_t valIn = 0;
+=======
+const uint interruptPin = 17;
+//volatile uint16_t valIn = 0;
+volatile uint valIn = 0;
+>>>>>>> a9f7f5ddb8944feb81c264275e6a3601283a6d18
 
 volatile bool fire = false;
 
-const uint ITI = Fs * 5;
+const uint ITI = Fs * 2;
 
 // waveform parameters to be set over serial for each of the 4 DAC channels
 volatile uint waveType[4] = {1,1,1,1}; // wave types: 0 = whale, 1 = square
@@ -74,6 +80,8 @@ void setup() {
  
   t1.begin(waveRun, 1E6/Fs);
 
+    pinMode(interruptPin, INPUT_PULLDOWN);
+
 }
 
 // functions called by timer should be short, run as quickly as
@@ -91,6 +99,18 @@ void waveRun(){
   mcp.setChannelValue(MCP4728_CHANNEL_C, curVal[2]); // send the value to the dac
   mcp.setChannelValue(MCP4728_CHANNEL_D, curVal[3]); // send the value to the dac
 
+<<<<<<< HEAD
+=======
+if (loopCount % 500){
+    valIn = digitalRead(interruptPin);  // read the input pin
+    Serial.print("<");
+    Serial.print(valIn);
+    Serial.print(",");
+    Serial.print(curVal[0]);
+    Serial.print(">");
+    Serial.println("");
+  }
+>>>>>>> a9f7f5ddb8944feb81c264275e6a3601283a6d18
 
   valIn = analogRead(analogInPin);  // read the input pin
   Serial.print("<");

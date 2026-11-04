@@ -11,6 +11,7 @@ if ~isempty(data)
     strt = find(data=='<',1,'first');
     fin = find(data=='>',1,'last');
     data = data(strt:fin);
+
     data = sscanf(data,'<%d,%d,%d>\n');
 
     data = reshape(data,3,[])';

@@ -1,0 +1,15 @@
+
+exp_pth = 'C:\Users\ephys\Desktop\2026-04-16_T11-19-33\';
+load([exp_pth 'model_fit.mat']);
+
+f = figure;
+hold on
+ax = axes(f);
+plot(ax,voltages,vals,'-ow')
+mod_fit = fit(voltages',vals,'logistic4');
+plot(ax,mod_fit,'r')
+ylim([0 vals(end)+100])
+xlabel('Voltage')
+ylabel('\muM')
+
+% exportgraphics(f,[exp_pth '\data.png'],'Resolution',300)
