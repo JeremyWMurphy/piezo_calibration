@@ -5,7 +5,6 @@ data = read(src,up_every,'char');
 % write out raw data
 fprintf(fid,'%s',data');
 
-
 if ~isempty(data)
 
     strt = find(data=='<',1,'first');

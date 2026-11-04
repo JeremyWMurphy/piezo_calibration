@@ -8,7 +8,7 @@ end
 serial_port = 'COM6';
 teensy_fs = 2e3;
 n_disp = 5 * teensy_fs;
-up_every = 500;
+up_every = 2000;
 
 teensy_reset = '<S,1>';
 
