@@ -25,17 +25,6 @@ btn_strt = gl.Children(6);
 btn_set = gl.Children(7);
 btn_stop = gl.Children(10);
 
-<<<<<<< HEAD
-dat_lbls = gl.Children(11:20);
-for i = 1:size(dat_lbls,1)
-=======
-
-dat_lbls = gl.Children(13:2:32);
-for i = 1:size(voltages,2)
->>>>>>> a9f7f5ddb8944feb81c264275e6a3601283a6d18
-    dat_lbls(i).Text = num2str(voltages(i));
-end
-
 cur_dat_field = 1;
 
 %% wait for start button push
@@ -116,22 +105,6 @@ while go_on
         write_serial(s,msg_out);
     end
 
-<<<<<<< HEAD
-=======
-    if btn_plt.Value
-
-        btn_plt.Value = false;
-        vals = zeros(size(measure_fields));
-        for i = 1:size(measure_fields,1)
-            vals(i) = str2double(measure_fields(i).Value);
-            fprintf(data_fid,'%s,%s\n',measure_fields(i).Value,num2str(voltages(i)));
-        end
-        mod_fit = fit(voltages',vals,'logistic4');      
-        save([exp_pth '\model_fit.mat'],'mod_fit','voltages','vals');
-
-    end
-
->>>>>>> a9f7f5ddb8944feb81c264275e6a3601283a6d18
     if btn_stop.Value
 
         fprintf('\nAborted...\n')
