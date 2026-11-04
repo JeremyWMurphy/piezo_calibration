@@ -1,8 +1,8 @@
 function fig = make_ui_figure(n_disp,pth)
 
-edit_name_loc = {1,[1 2]};
-pth_txt_loc = {1,[4 10]};
-pth_btn_loc = {1,3};
+edit_name_loc = {1,[1 5]};
+pth_txt_loc = {1,[6 10]};
+pth_btn_loc = {1,11};
 strt_btn_loc = {15,1};
 set_btn_loc = {15,2};
 nxt_btn_loc = {15,3};
@@ -37,7 +37,7 @@ edt = uieditfield(gl, 'Value',default_id, ...
     'BackgroundColor',[0 0 0],...
     'FontColor',[0 1 0]);
 edt.Layout.Row = edit_name_loc{1};
-edt.Layout.Column = edit_name_loc{1};
+edt.Layout.Column = edit_name_loc{2};
 
 % display and set save path field
 pth_txt = uilabel(gl, ...
@@ -45,7 +45,7 @@ pth_txt = uilabel(gl, ...
     'BackgroundColor',[0 0 0],...
     'FontColor',[0 1 0]);
 pth_txt.Layout.Row = pth_txt_loc{1};
-pth_txt.Layout.Column = pth_txt_loc{1};
+pth_txt.Layout.Column = pth_txt_loc{2};
 
 % set path button
 pth_btn = uibutton(gl,...
@@ -102,29 +102,13 @@ stp_btn = uibutton(gl,'state',...
 stp_btn.Layout.Row = stp_btn_loc{1};
 stp_btn.Layout.Column = stp_btn_loc{2};
 
-% column of voltage labels, and edit boxes for entering distance
-dat_tbl_lbls = {};
+% column of voltage labels
 
-dat_tbl_lbls{1} = uilabel(gl, ...
-    'Text','voltage',...
-    'BackgroundColor',[0 0 0],...
-    'FontColor',[0 1 0]);
-
-dat_tbl_lbls{1}.Layout.Row = 2;
-dat_tbl_lbls{1}.Layout.Column = 2;
-
-dat_tbl_lbls{2} = uilabel(gl, ...
-    'Text','microns',...
-    'BackgroundColor',[0 0 0],...
-    'FontColor',[0 1 0]);
-dat_tbl_lbls{2}.Layout.Row = 2;
-dat_tbl_lbls{2}.Layout.Column = 3;
 
 r = 3:12;
 c = [2 3];
 
 vlbls = {};
-dat_tbl = {};
 for i = 1:numel(r)
 
     vlbls{i} = uilabel(gl, ...
@@ -133,12 +117,6 @@ for i = 1:numel(r)
         'FontColor',[0 1 0]);
     vlbls{i}.Layout.Row = r(i);
     vlbls{i}.Layout.Column = c(1);
-
-    dat_tbl{i} = uieditfield(gl, 'Value','0', ...
-        'BackgroundColor',[0 0 0],...
-        'FontColor',[0 1 0]);
-    dat_tbl{i}.Layout.Row = r(i);
-    dat_tbl{i}.Layout.Column = c(2);
        
 end
 
@@ -150,18 +128,18 @@ ax.NextPlot = 'add';
 ax.Color = [0 0 0];
 ax.XColor = [0 1 0];
 ax.YColor = [0 1 0];
-ax.YLim = [-0.1 1.1];
+ax.YLim = [3250 3750];
 ax.Title.Color = [1 0 1];
 ax.Title.FontSize = 12;
 ax.Title.FontWeight = 'normal';
 ax.Title.String = 'Beam-Break Data';
-ax.YTick = [-1 0 1 2];
+ax.YTick = [3250:100:3750];
 ax.XTick = [];
 ax.LineWidth = 1;
 
 nan_vec = nan(n_disp,1);
 plot(ax,1:n_disp,nan_vec,'m'); % piezo signal
-ax.Children(1).LineWidth = 2;
+ax.Children(1).LineWidth = 1;
 
 chan_dd = uidropdown(gl,Items={'0','1','2','3'},ItemsData=['0';'1';'2';'3']);
 chan_dd.Layout.Row = chan_dd_loc{1};
@@ -251,7 +229,9 @@ ax2.YTick = [-1 0 2 4 6];
 ax2.XTick = [];
 ax2.LineWidth = 1;
 plot(ax2,1:n_disp,nan_vec,'y'); % piezo signal
-ax2.Children.LineWidth = 1;
+plot(ax2,1:n_disp,nan_vec,'w'); % piezo signal
+ax2.Children(1).LineWidth = 1;
+ax2.Children(2).LineWidth = 1;
 
 end
 

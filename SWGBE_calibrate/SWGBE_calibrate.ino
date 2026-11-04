@@ -3,10 +3,10 @@
 #include <Wire.h>
 #include <Bounce.h>
 
-const uint Fs = 5000; // sampling rate
+const uint Fs = 2000; // sampling rate
 const uint waveMax = 4095; // it's a 12bit dac, so this will always be the max voltage out
 
-const uint analogInPin = 14;
+const uint analogInPin = 16;
 volatile uint16_t valIn = 0;
 
 volatile bool fire = false;
@@ -44,6 +44,7 @@ const uint nVarIn = 7;
 
 //
 volatile uint32_t loopCount = 0;
+volatile uint32_t lastCount = 0;
 volatile uint32_t lastStimT = 0;
 
 Adafruit_MCP4728 mcp;
@@ -51,7 +52,7 @@ IntervalTimer t1;
 
 void setup() {
 
-  analogReadResolution(10);
+  analogReadResolution(12);
 
   Serial.begin(9600); // baud rate here doesn't matter for teensy
   Serial.println("Connected");
@@ -90,16 +91,17 @@ void waveRun(){
   mcp.setChannelValue(MCP4728_CHANNEL_C, curVal[2]); // send the value to the dac
   mcp.setChannelValue(MCP4728_CHANNEL_D, curVal[3]); // send the value to the dac
 
-if (loopCount % 500){
-    valIn = analogRead(analogInPin);  // read the input pin
-    Serial.print("<");
-    Serial.print(valIn);
-    Serial.print(",");
-    Serial.print(curVal[0]);
-    Serial.print(">");
-    Serial.println("");
-  }
 
+  valIn = analogRead(analogInPin);  // read the input pin
+  Serial.print("<");
+  Serial.print(valIn);
+  Serial.print(",");
+  Serial.print(curVal[0]);
+  Serial.print(",");
+  Serial.print(stimOn[0]);
+  Serial.print(">");
+  Serial.println("");
+  
   loopCount++;
 
 }
@@ -247,7 +249,6 @@ void parseData() { // split the data into its parts
     chanSelect = waveParams[0];
 
     if (chanSelect>3){
-      Serial.println("Bad channel selection, setting channel 0 to the requested values");
       chanSelect = 0;
     }
 
@@ -258,10 +259,10 @@ void parseData() { // split the data into its parts
     waveDur[chanSelect] = (volatile uint) round((waveParams[2]/1000.0) * Fs);
 
     if ((waveType[chanSelect] == 0) & (waveDur[chanSelect] < SamplesNum)){
-      Serial.println("The requested duration is too short for the whalestim, setting to minimum of 20 ms");
+      //Serial.println("The requested duration is too short for the whalestim, setting to minimum of 20 ms");
       waveDur[chanSelect] = SamplesNum;
     } else if ((waveType[chanSelect] == 0) & (waveDur[chanSelect] % 100 != 0)){
-      Serial.println("The requested duration for the whalestim must be divisible by 20, shifting duration up to next multiple of 20.");
+      //Serial.println("The requested duration for the whalestim must be divisible by 20, shifting duration up to next multiple of 20.");
       waveDur[chanSelect] = waveDur[chanSelect] + (waveDur[chanSelect] % 100);
     }
 
@@ -281,32 +282,32 @@ void parseData() { // split the data into its parts
     // this is always computed, but only used if using whale stim
     whaleStep[chanSelect] = (volatile uint) ceil((float) waveDur[chanSelect]/SamplesNum); // how quickly to step through the asymCosine
 
-    Serial.println("---------");
-    for (int i = 0; i < 4; i++){
-      Serial.print("Channel ");
-      Serial.print(i);
-      Serial.print(": Wave Type ");
-      Serial.print(waveType[i]);
-      Serial.print(", ");
-      Serial.print(" Wave Duration = ");
-      Serial.print(waveDur[i] * 1000.0/Fs);
-      Serial.print(" ms, ");
-      Serial.print(" wave Ampplitude (12bit) = ");
-      Serial.print(waveAmp[i]);
-      Serial.print(", ");
-      Serial.print(" waveIPI = ");
-      Serial.print(waveIPI[i] * 1000.0/Fs);
-      Serial.print(" ms, ");
-      Serial.print(" waveReps = "); 
-      Serial.print(waveReps[i]);
-      Serial.print(", ");
-      Serial.print(" wave Baseline = ");
-      Serial.print(waveBase[i] * 1000.0/Fs);
-      Serial.print(" ms");
-      Serial.println("");
-    }
+    // Serial.println("---------");
+    // for (int i = 0; i < 4; i++){
+    //   Serial.print("Channel ");
+    //   Serial.print(i);
+    //   Serial.print(": Wave Type ");
+    //   Serial.print(waveType[i]);
+    //   Serial.print(", ");
+    //   Serial.print(" Wave Duration = ");
+    //   Serial.print(waveDur[i] * 1000.0/Fs);
+    //   Serial.print(" ms, ");
+    //   Serial.print(" wave Ampplitude (12bit) = ");
+    //   Serial.print(waveAmp[i]);
+    //   Serial.print(", ");
+    //   Serial.print(" waveIPI = ");
+    //   Serial.print(waveIPI[i] * 1000.0/Fs);
+    //   Serial.print(" ms, ");
+    //   Serial.print(" waveReps = "); 
+    //   Serial.print(waveReps[i]);
+    //   Serial.print(", ");
+    //   Serial.print(" wave Baseline = ");
+    //   Serial.print(waveBase[i] * 1000.0/Fs);
+    //   Serial.print(" ms");
+    //   Serial.println("");
+    // }
     
-    Serial.println("---------");
+    // Serial.println("---------");
     
     newData = false;
 

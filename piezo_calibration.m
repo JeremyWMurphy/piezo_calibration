@@ -5,9 +5,12 @@ if nargin < 1
 end
 
 % parameters
-serial_port = 'COM3';
-n_disp = 5e3;
-up_every = 10000;
+serial_port = 'COM6';
+teensy_fs = 2e3;
+n_disp = 5 * teensy_fs;
+up_every = 500;
+
+teensy_reset = '<S,1>';
 
 data_folder_pth = 'C:\Users\jeremy\Desktop\';
 
@@ -20,44 +23,42 @@ id_field = gl.Children(3);
 pth_field = gl.Children(4);
 btn_strt = gl.Children(6);
 btn_set = gl.Children(7);
-btn_plt = gl.Children(9);
 btn_stop = gl.Children(10);
 
-
-dat_lbls = gl.Children(13:2:32);
+dat_lbls = gl.Children(11:20);
 for i = 1:size(dat_lbls,1)
     dat_lbls(i).Text = num2str(voltages(i));
 end
-
-measure_fields = gl.Children(14:2:32);
 
 cur_dat_field = 1;
 
 %% wait for start button push
 waitfor(btn_strt,'Value',1);
+f.UserData.Next = false;
 
 id = id_field.Value;
 save_pth = pth_field.Text;
 
 exp_pth = [save_pth id];
 mkdir(exp_pth);
-data_fid = fopen([exp_pth '\calibration_data.csv'],'w');
-fprintf(data_fid,'%s\n',id);
 
-ax.Title.String = ['Now Doing Voltage ' num2str(voltages(cur_dat_field))];
-dat_lbls(cur_dat_field).BackgroundColor = [0 0.1 0.5];
+ax.Title.String = ['Now Doing Voltage ' num2str(voltages(cur_dat_field+1))];
+dat_lbls(cur_dat_field+1).BackgroundColor = [0 0.1 0.5];
 
 %% serial to talk to teensy waveform generator
 s = serialport(serial_port,115200);
-s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt, ax, ax2, up_every));
-s.flush;
 
-chan_type = gl.Children(33).Value;
-wave_type = gl.Children(35).Value;
-dur_in = gl.Children(37).Value;
-ipi_in = gl.Children(39).Value;
-base_in = gl.Children(41).Value;
-npulse_in = gl.Children(43).Value;
+pause(1)
+
+s.flush;
+write_serial(s,teensy_reset); % resetting teensy
+
+chan_type = gl.Children(21).Value;
+wave_type = gl.Children(23).Value;
+dur_in = gl.Children(25).Value;
+ipi_in = gl.Children(27).Value;
+base_in = gl.Children(29).Value;
+npulse_in = gl.Children(31).Value;
 
 msg_out = ['<' chan_type ',' wave_type ',' dur_in ',' num2str(round(interp1([0,5],[0,4095],voltages(1)))) ',' ipi_in ',' npulse_in ',' base_in '>'];
 
@@ -68,9 +69,13 @@ write_serial(s,msg_out);
 go_on = true;
 while go_on
 
-    if f.UserData.Next 
+    if f.UserData.Next
 
-        f.UserData.Next = false;
+        f.UserData.Next = false;     
+        configureCallback(s,'off');
+        fl_val = strrep(num2str(voltages(cur_dat_field)),'.','pt');
+        data_fid = fopen([exp_pth '\' fl_val 'v_calibration_data.csv'],'w');
+        s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt, data_fid, ax, ax2, up_every));
 
         % change the color to normal of prior voltage label
         dat_lbls(cur_dat_field).BackgroundColor = [0 0 0];
@@ -79,7 +84,7 @@ while go_on
         cur_dat_field = cur_dat_field + 1;
 
         % if we're at the last voltage, wrap back around
-        if cur_dat_field > numel(measure_fields)
+        if cur_dat_field > numel(dat_lbls)
             cur_dat_field = 1;
         end
 
@@ -87,7 +92,6 @@ while go_on
         v_out = num2str(round(interp1([0,5],[0,4095],voltages(cur_dat_field))));
         msg_out = ['<' chan_type ',' wave_type ',' dur_in ',' v_out ',' ipi_in ',' npulse_in ',' base_in '>'];
         write_serial(s,msg_out);  
-
         ax.Title.String = ['Now Doing Voltage ' num2str(voltages(cur_dat_field))];
         dat_lbls(cur_dat_field).BackgroundColor = [0 0.1 0.5];
 
@@ -106,27 +110,6 @@ while go_on
         write_serial(s,msg_out);
     end
 
-    if btn_plt.Value
-
-        btn_plt.Value = false;
-
-        vals = zeros(size(measure_fields));
-        for i = 1:size(measure_fields,1)
-            vals(i) = str2double(measure_fields(i).Value);
-            fprintf(data_fid,'%s,%s\n',measure_fields(i).Value,num2str(voltages(i)));
-        end
-        figure, hold on
-        plot(voltages,vals,'ok')
-        mod_fit = fit(voltages',vals,'logistic4');      
-        plot(mod_fit,'r')
-        ylim([0 vals(end)+100])
-        xlabel('Voltage')
-        ylabel('\muM')
-        exportgraphics(gcf,[exp_pth '\data.png'],'Resolution',300)
-        save([exp_pth '\model_fit.mat'],'mod_fit','voltages','vals');
-  
-    end
-
     if btn_stop.Value
 
         fprintf('\nAborted...\n')
@@ -141,7 +124,7 @@ while go_on
 
     end
 
-    pause(0.001)
+    pause(0.1)
     
 end
 
