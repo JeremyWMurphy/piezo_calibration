@@ -1,17 +1,11 @@
 #include "WaveTable.h"
 #include <Adafruit_MCP4728.h>
+#include <CircularBuffer.hpp>
 #include <Wire.h>
-#include <Bounce.h>
 
 const uint Fs = 2000; // sampling rate
-const uint waveMax = 4095; // it's a 12bit dac, so this will always be the max voltage out
-
 const uint analogInPin = 16;
-volatile uint16_t valIn = 0;
-
-volatile bool fire = false;
-
-const uint ITI = Fs * 2;
+const bool reportData = true;
 
 // waveform parameters to be set over serial for each of the 4 DAC channels
 volatile uint waveType[4] = {1,1,1,1}; // wave types: 0 = whale, 1 = square
@@ -20,8 +14,11 @@ volatile uint waveAmp[4] = {0,0,0,0}; // max voltage amplitude, in 12bit - 0-409
 volatile uint waveIPI[4] = {0,0,0,0}; // duration between pulses, set via serial in ms, converted to sample points
 volatile uint waveReps[4] = {0,0,0,0}; // number of times to repeat wave pulse and interpulse interval
 volatile uint rampStep[4] = {0,0,0,0}; // specific to ramping variables, still in development
-volatile uint whaleStep[4] = {0,0,0,0}; // specific to ramping variables, still in development
-volatile uint waveBase[4] = {0,0,0,0}; // baseline prior to stimulus onset, in ms, allows for offsets between the stimuli, set via serial in ms, converted to sample points
+volatile float whaleStep[4] = {0.0,0.0,0.0,0.0};  // specific to asymcosin variables
+volatile float whalePhase[4] = {0.0,0.0,0.0,0.0};  // specific to whale variables
+volatile float gaussStep[4] = {0.0,0.0,0.0,0.0};  // specific to gauss variables
+volatile float gaussPhase[4] = {0.0,0.0,0.0,0.0};  // specific to gauss variables
+volatile uint waveBase[4] = {0,0,0,0};   // baseline prior to stimulus onset, in ms, allows for offsets between the stimuli, set via serial in ms, converted to sample points
 
 // waveform tracking
 volatile uint wavIncrmntr[4] = {0,0,0,0}; // for keeping track of where we are in a given stimulus presentation
@@ -29,6 +26,7 @@ volatile uint repCntr[4] = {0,0,0,0}; // for keeping track of pulse repitions
 volatile uint ipiCntr[4] = {0,0,0,0}; // for keeping track of where we are in an interpulse interval
 volatile uint BaseCntr[4] = {0,0,0,0}; // for keeping track of where we are in a baseline period
 volatile uint whaleCntr[4] = {0,0,0,0}; //
+volatile uint gaussCntr[4] = { 0, 0, 0, 0 };    // tracking gauss stim
 volatile uint waveParams[7] = {0,0,0,0,0,0,0};
 volatile bool inIpi[4] = {false,false,false,false};
 volatile bool inBase[4] = {false,false,false,false};
@@ -36,16 +34,25 @@ volatile bool stimOn[4] = {false,false,false,false};
 volatile uint curVal[4] = {0,0,0,0};
 volatile uint chanSelect = 0; // 
 
+volatile bool stimEnd = false;
+volatile bool present = false;
+volatile bool run = false;
+
+// Define a safe struct holding exactly one sample's worth of data
+struct TelemetryPacket {
+  uint16_t val0;
+  uint16_t val1;
+  bool val2;
+};
+
+// Create a buffer that can hold 64 packets in RAM. 
+CircularBuffer<TelemetryPacket, 64> telemetryQueue;
+
 // Serial coms
 const byte numChars = 255;
-volatile char receivedChars[numChars];
+char receivedChars[numChars];
 volatile bool newData = false;
-const uint nVarIn = 7;
-
-//
-volatile uint32_t loopCount = 0;
-volatile uint32_t lastCount = 0;
-volatile uint32_t lastStimT = 0;
+volatile char msgCode;
 
 Adafruit_MCP4728 mcp;
 IntervalTimer t1;
@@ -80,237 +87,235 @@ void setup() {
 // possible, and should avoid calling other functions if possible.
 
 void waveRun(){
-
-  recvWithStartEndMarkers();
-  parseData();
   
-  waveWrite(); // set values
-
-  mcp.setChannelValue(MCP4728_CHANNEL_A, curVal[0]); // send the value to the dac
-  mcp.setChannelValue(MCP4728_CHANNEL_B, curVal[1]); // send the value to the dac
-  mcp.setChannelValue(MCP4728_CHANNEL_C, curVal[2]); // send the value to the dac
-  mcp.setChannelValue(MCP4728_CHANNEL_D, curVal[3]); // send the value to the dac
-
-  valIn = analogRead(analogInPin);  // read the input pin
-  Serial.print("<");
-  Serial.print(valIn);
-  Serial.print(",");
-  Serial.print(curVal[0]);
-  Serial.print(",");
-  Serial.print(stimOn[0]);
-  Serial.print(">");
-  Serial.println("");
-  
-  loopCount++;
+  if (run){
+    if (present){
+      waveWrite(); 
+    }
+    queueTelemetry();
+  }
 
 }
 
-void waveWrite(){
+void waveWrite() {
 
-  if (!fire && loopCount - lastStimT > ITI){ // 
-      lastStimT = loopCount;
-      fire = true;
-      for (int i = 0; i< 4; i++){
-      stimOn[i] = true;
-      inBase[i] = true;
-    }
-  }
-
-  if (fire){
-    
-    for (int i = 0; i < 4; i++){ // for each dac channel
-
-      if (stimOn[i]) {   // if there's a stim on
-        if (inBase[i]){ // is it in baseline?
-          curVal[i] = 0; // then output stays at 0
-          BaseCntr[i]++; // increment the baseline counter
-
-          if (BaseCntr[i]>=waveBase[i]){          
-            inBase[i] = false; // if we've gone past the baseline period, then end it
-            BaseCntr[i] = 0; // and reset counter          
+  if (!stimEnd) {
+    // Waveform generator loop
+    for (int i = 0; i < 4; i++) {  
+      if (waveDur[i] <= 0) {       
+        stimOn[i] = false;
+      }
+      if (stimOn[i]) {                       
+        if (inBase[i] && waveBase[i] > 0) {  
+          curVal[i] = 0;                     
+          BaseCntr[i]++;                     
+          if (BaseCntr[i] >= waveBase[i]) {
+            inBase[i] = false;  
+            BaseCntr[i] = 0;    
           }
-
-        } else if (inIpi[i]){ // check if in an inter-pulse interval         
-          curVal[i] = 0; // if yes, output is 0
-          ipiCntr[i]++; // increment
-          if (ipiCntr[i]>=waveIPI[i]){ // check if we're at the end of the ipi
-            inIpi[i] = false; // we're out of ipi period
-            ipiCntr[i] = 0; // reset counter
+        } else if (inIpi[i]) {             
+          curVal[i] = 0;                   
+          ipiCntr[i]++;                    
+          if (ipiCntr[i] >= waveIPI[i]) {  
+            inIpi[i] = false;              
+            ipiCntr[i] = 0;                
           }
-        } else { // if not in baseline or in an ipi, then we are presenting the waveform  
-          // asign wave value based on wave type 
-          if (waveType[i] == 0){ // whale stim
-            if (wavIncrmntr[i] % whaleStep[i] == 0){
-              curVal[i] = map(asymCos[whaleCntr[i]], 0, waveMax, 0, waveAmp[i]);
-              whaleCntr[i]++;
-            }   
-          } else if (waveType[i] == 1){ // square wave
-            curVal[i] = waveAmp[i];  
-          } else if (waveType[i] == 2){ // ramp up
-            curVal[i] = linspace((float) waveDur[i], 0, (float) waveAmp[i] , wavIncrmntr[i]);
-          } else if (waveType[i] == 3){ // ramp down
-            curVal[i] = linspace((float) waveDur[i], (float) waveAmp[i], 0 , wavIncrmntr[i]);  
-          } else if (waveType[i] == 4){ // pyramid
-            if(wavIncrmntr[i]<waveDur[i]/2){
-              curVal[i] = linspace((float) waveDur[i]/2,0, (float) waveAmp[i] , wavIncrmntr[i]); 
+        } else {  
+          if (waveType[i] == 0) {  // Whale stim
+          //------------------------------------------------------------------------
+            int indexA = (int)whalePhase[i];
+            int indexB = indexA + 1;
+            if (indexB >= SamplesNum) {
+              indexB = 0; 
+            }
+            float fraction = whalePhase[i] - indexA;                            
+            float fineInterp = (float)asymCos[indexA] + fraction * ((float)asymCos[indexB] - (float)asymCos[indexA]); // linear interpolation           
+            curVal[i] = (int)round((fineInterp / 4095.0) * (float)waveAmp[i]);
+            whalePhase[i] += whaleStep[i];
+            if (whalePhase[i] >= SamplesNum) {
+              whalePhase[i] -= SamplesNum; 
+            }
+
+          } else if (waveType[i] == 1) {  // Square wave
+            curVal[i] = waveAmp[i];
+          } else if (waveType[i] == 2) {  // Ramp up
+            curVal[i] = linspace((float)waveDur[i], 0, (float)waveAmp[i], wavIncrmntr[i]);
+          } else if (waveType[i] == 3) {  // Ramp down
+            curVal[i] = linspace((float)waveDur[i], (float)waveAmp[i], 0, wavIncrmntr[i]);
+          } else if (waveType[i] == 4) {  // Pyramid
+            if (wavIncrmntr[i] < waveDur[i] / 2) {
+              curVal[i] = linspace((float)waveDur[i] / 2, 0, (float)waveAmp[i], wavIncrmntr[i]);
             } else {
-              curVal[i] = linspace((float) waveDur[i]/2, (float) waveAmp[i], 0 , wavIncrmntr[i]-waveDur[i]/2); 
+              curVal[i] = linspace((float)waveDur[i] / 2, (float)waveAmp[i], 0, wavIncrmntr[i] - waveDur[i] / 2);
+            }
+          } else if (waveType[i] == 5 && waveDur[i] > 0) {  // Gauss
+            
+            int indexA = (int)gaussPhase[i];
+            int indexB = indexA + 1;
+            if (indexB >= SamplesNum) {
+              indexB = 0; 
+            }
+            float fraction = gaussPhase[i] - indexA;                            
+            float fineInterp = (float)gauss[indexA] + fraction * ((float)gauss[indexB] - (float)gauss[indexA]);
+            curVal[i] = (int)round((fineInterp / 4095.0) * (float)waveAmp[i]);
+            gaussPhase[i] += gaussStep[i];
+
+            if (gaussPhase[i] >= SamplesNum) {
+              gaussPhase[i] -= SamplesNum; 
             }
           }
-
-           wavIncrmntr[i] = wavIncrmntr[i] + 1; 
-             
+          wavIncrmntr[i] = wavIncrmntr[i] + 1;
         }
 
-      }
-
-      if (wavIncrmntr[i] >= waveDur[i]){ // if it's the end of one wave
-        if (repCntr[i] < waveReps[i]-1){ // but if it's not the end of the number of wave repititions
-          repCntr[i] = repCntr[i] + 1; // increment rep counter
-          whaleCntr[i] = 0;
-          wavIncrmntr[i] = 0; // reset wave indexer
-          inIpi[i] = true; // go into ipi
-          curVal[i] = 0;
-        } else { // else that's the end of the requested signal, so reset stuff
-          repCntr[i] = 0;
-          whaleCntr[i] = 0;
-          wavIncrmntr[i] = 0;
-          inIpi[i] = false; // go into ipi
-          stimOn[i] = false;
-          curVal[i] = 0;
+        if (wavIncrmntr[i] > waveDur[i]) {    
+          if (repCntr[i] < waveReps[i] - 1) {  
+            repCntr[i] = repCntr[i] + 1;       
+            whaleCntr[i] = 0;
+            whalePhase[i] = 0;
+            gaussCntr[i] = 0;
+            gaussPhase[i] = 0.0;
+            wavIncrmntr[i] = 0;  
+            inIpi[i] = true;     
+            curVal[i] = 0;
+          } else {  
+            repCntr[i] = 0;
+            whaleCntr[i] = 0;
+            whalePhase[i] = 0;
+            gaussCntr[i] = 0;
+            gaussPhase[i] = 0;
+            wavIncrmntr[i] = 0;
+            inIpi[i] = false;  
+            stimOn[i] = false;
+            curVal[i] = 0;
+          }
         }
       }
-    } 
-  }     
-  
-  // check if all stimuli are done
-  for (int i = 0; i < 4; i++){
-    if (stimOn[i]){
-      break;
     }
-    fire = false; 
-  }
 
+    mcp.setChannelValue(MCP4728_CHANNEL_A, curVal[0]);  // send the value to the dac
+    mcp.setChannelValue(MCP4728_CHANNEL_B, curVal[1]);  // send the value to the dac
+    mcp.setChannelValue(MCP4728_CHANNEL_C, curVal[2]);  // send the value to the dac
+    mcp.setChannelValue(MCP4728_CHANNEL_D, curVal[3]);  // send the value to the dac
+
+    // Check if all stimuli are done
+    if (stimOn[0] || stimOn[1] || stimOn[2] || stimOn[3]) {
+      // Still running...
+    } else {
+      stimEnd = true;
+      present = false;
+    }
+  }
 }
 
-void recvWithStartEndMarkers() {
+void recvSerial() {
 
   static boolean recvInProgress = false;
   static byte ndx = 0;
   const char startMarker = '<';
   const char endMarker = '>';
-  volatile char rc;
+  char rc; // Removed volatile for clean hardware registry handling
 
   while (Serial.available() > 0 && newData == false) {
-      
     rc = Serial.read();
-
     if (recvInProgress == true) {
       if (rc != endMarker) {
         receivedChars[ndx] = rc;
         ndx++;
         if (ndx >= numChars) {
-            ndx = numChars - 1;
+          ndx = numChars - 1;
         }
       } else {
-        receivedChars[ndx] = '\0'; // terminate the string
+        receivedChars[ndx] = '\0';  
         recvInProgress = false;
         ndx = 0;
-        newData = true;
+        newData = true; 
       }
     } else if (rc == startMarker) {
       recvInProgress = true;
     }
   }
-
 }
 
-void parseData() { // split the data into its parts
+void parseData() {  
 
+  int cntr = 0;
+  char *ptr;
+  
   if (newData == true) {
+    char *strtokIndx; 
+    strtokIndx = strtok((char *)receivedChars, ",");  
+    msgCode = *strtokIndx;
 
-    int cntr = 0;
-    char * ptr;
-
-    ptr = strtok((char *) receivedChars,",");
-    waveParams[cntr] = atoi(ptr);
-    cntr++;
-
-    ptr = strtok(NULL,",");
-
-    while ((ptr != NULL) & (cntr < 7)){
-      waveParams[cntr] = atoi(ptr);
-      cntr++;
-      ptr = strtok(NULL,",");
-    }
-
-    // select channel
-    chanSelect = waveParams[0];
-
-    if (chanSelect>3){
-      chanSelect = 0;
-    }
-
-    // set wave type
-    waveType[chanSelect] = waveParams[1];
-
-    // set duration in sample points
-    waveDur[chanSelect] = (volatile uint) round((waveParams[2]/1000.0) * Fs);
-
-    if ((waveType[chanSelect] == 0) & (waveDur[chanSelect] < SamplesNum)){
-      //Serial.println("The requested duration is too short for the whalestim, setting to minimum of 20 ms");
-      waveDur[chanSelect] = SamplesNum;
-    } else if ((waveType[chanSelect] == 0) & (waveDur[chanSelect] % 100 != 0)){
-      //Serial.println("The requested duration for the whalestim must be divisible by 20, shifting duration up to next multiple of 20.");
-      waveDur[chanSelect] = waveDur[chanSelect] + (waveDur[chanSelect] % 100);
-    }
-
-    // set amplitude
-    waveAmp[chanSelect] = waveParams[3];
-    // set interpulse interval
-    waveIPI[chanSelect] = (volatile uint) round((waveParams[4]/1000.0) * Fs);
-    // set number of pulses
-    waveReps[chanSelect] = waveParams[5]; 
-    // get baseline length
-            
-    waveBase[chanSelect] = (volatile uint) round((waveParams[6]/1000.0) * Fs);
+    if (msgCode == 'R'){
+      ptr = strtok(NULL, ",");
+      noInterrupts();
+      run = atoi(ptr);
+      interrupts();
+      
+    } else if (msgCode == 'P') {                                                             
+      ptr = strtok(NULL, ",");
+      noInterrupts();
+      present = atoi(ptr);
+      interrupts();
     
-    // this is always computed, but only used if ramping up or down
-    rampStep[chanSelect] = (volatile uint) ceil((float) waveAmp[chanSelect]/waveDur[chanSelect]);
+    } else if (msgCode == 'W') {  
+      ptr = strtok(NULL, ",");
+      while ((ptr != NULL) && (cntr < 7)) {
+        waveParams[cntr] = atoi(ptr);
+        cntr++;
+        ptr = strtok(NULL, ",");
+      }
+      
+      uint targetChan = waveParams[0];
+      if (targetChan > 3) {
+        Serial.println("Bad channel selection, defaulting to channel 0");
+        targetChan = 0;
+      }
+      
+      // Calculate temporal boundaries locally
+      uint calculatedDur = (uint)round((waveParams[2] / 1000.0) * Fs);
+      
+      // the whale and gaussian have fixed minimum length, currently 25ms
+      if ((waveParams[1] == 0 || waveParams[1] == 5) && calculatedDur <= SamplesNum) {
+        calculatedDur = SamplesNum-1;
+      }
+      
+      uint calculatedIPI  = (uint)round((waveParams[4] / 1000.0) * Fs);
+      uint calculatedBase = (uint)round((waveParams[6] / 1000.0) * Fs);
+      uint calculatedRamp = (uint)ceil((float)waveParams[3] / calculatedDur);
+      float calculatedWhale = (float)(SamplesNum-1) / (float)calculatedDur;
+      float calculatedGauss = (float)(SamplesNum-1) / (float)calculatedDur;
 
-    // this is always computed, but only used if using whale stim
-    whaleStep[chanSelect] = (volatile uint) ceil((float) waveDur[chanSelect]/SamplesNum); // how quickly to step through the asymCosine
+      // ========================================================
+      // ATOMIC UPDATE ZONE: Safely push new parameters to arrays
+      // ========================================================
+      noInterrupts();
+      chanSelect = targetChan;
+      waveType[chanSelect] = waveParams[1];
+      waveDur[chanSelect] = calculatedDur;
+      waveAmp[chanSelect] = waveParams[3];
+      waveIPI[chanSelect] = calculatedIPI;
+      waveReps[chanSelect] = waveParams[5];
+      waveBase[chanSelect] = calculatedBase;
+      rampStep[chanSelect] = calculatedRamp;
+      whaleStep[chanSelect] = calculatedWhale;
+      gaussStep[chanSelect] = calculatedGauss; 
+      interrupts();
+      // ============
 
-    // Serial.println("---------");
-    // for (int i = 0; i < 4; i++){
-    //   Serial.print("Channel ");
-    //   Serial.print(i);
-    //   Serial.print(": Wave Type ");
-    //   Serial.print(waveType[i]);
-    //   Serial.print(", ");
-    //   Serial.print(" Wave Duration = ");
-    //   Serial.print(waveDur[i] * 1000.0/Fs);
-    //   Serial.print(" ms, ");
-    //   Serial.print(" wave Ampplitude (12bit) = ");
-    //   Serial.print(waveAmp[i]);
-    //   Serial.print(", ");
-    //   Serial.print(" waveIPI = ");
-    //   Serial.print(waveIPI[i] * 1000.0/Fs);
-    //   Serial.print(" ms, ");
-    //   Serial.print(" waveReps = "); 
-    //   Serial.print(waveReps[i]);
-    //   Serial.print(", ");
-    //   Serial.print(" wave Baseline = ");
-    //   Serial.print(waveBase[i] * 1000.0/Fs);
-    //   Serial.print(" ms");
-    //   Serial.println("");
-    // }
-    
-    // Serial.println("---------");
+    }
     
     newData = false;
-
+  
   }
+}
+
+void queueTelemetry() {
+  TelemetryPacket pack;
+  pack.val0    = curVal[0];
+  pack.val1    = analogRead(analogInPin); 
+  pack.val2    = !stimEnd;
+  telemetryQueue.push(pack);
 }
 
 int linspace(float const n, float const d1, float const d2, int const i){
@@ -319,6 +324,25 @@ int linspace(float const n, float const d1, float const d2, int const i){
 }
  
 void loop(){
+
+  recvSerial(); 
+  
+  if (newData) {
+    parseData(); 
+  }
+
+  if (reportData) {
+    while (!telemetryQueue.isEmpty()) {
+      // Pull the oldest unsent data packet out of the buffer
+      TelemetryPacket outbound = telemetryQueue.shift(); 
+      // Print using the struct data members
+      Serial.print("<");
+      Serial.print(outbound.val0);       Serial.print(",");
+      Serial.print(outbound.val1);       Serial.print(",");
+      Serial.print(outbound.val2);       Serial.print(",");
+      Serial.println(">");
+    }
+  }
 }
 
 
