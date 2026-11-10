@@ -1,4 +1,4 @@
-function fig = make_ui_figure(n_disp)
+function fig = make_ui_figure_calibrate(n_disp)
 
 pth_main = ['C:\Users\' getenv('USERNAME') '\Desktop\'];
 default_id = ['Piezo_Calibration_' char(datetime('now','format','yyyy-MM-dd''_T''HH-mm-ss'))];
@@ -18,8 +18,11 @@ pth_btn_loc = {1,6};
 cals_btn_loc = {2,[1 2]};
 calp_btn_loc = {2,[3 4]};
 stp_btn_loc = {15,3};
+next_btn_loc = {2,[5 6]};
 % axis
-ax_loc = {[2 14],[2 13]};
+ax_loc = {[3 10],[1 13]};
+% axis
+ax2_loc = {[10 14],[1 13]};
 % waveform parameters
 wave_header_loc = {1,[14 15]};
 
@@ -70,7 +73,7 @@ cals_btn = uibutton(gl,...
     'BackgroundColor',[0 0 0],...
     'Text', 'Cal Sensor',...
     'FontColor',[0 1 0],...
-    'ButtonPushedFcn', @(src,event) setState(1));
+    'ButtonPushedFcn', @(src,event) setState(fig,1));
 cals_btn.Layout.Row = cals_btn_loc{1};
 cals_btn.Layout.Column = cals_btn_loc{2};
 
@@ -79,7 +82,7 @@ calp_btn = uibutton(gl,...
     'BackgroundColor',[0 0 0],...
     'Text', 'Cal Piezo',...
     'FontColor',[0 1 0],...
-    'ButtonPushedFcn', @(src,event) setState(2));
+    'ButtonPushedFcn', @(src,event) setState(fig,2));
 calp_btn.Layout.Row = calp_btn_loc{1};
 calp_btn.Layout.Column = calp_btn_loc{2};
 
@@ -88,7 +91,7 @@ stp_btn = uibutton(gl,...
     'BackgroundColor',[0 0 0],...
     'Text', 'Quit',...
     'FontColor',[0 1 0],...
-    'ButtonPushedFcn', @(src,event) setState(3));
+    'ButtonPushedFcn', @(src,event) setState(fig,3));
 stp_btn.Layout.Row = stp_btn_loc{1};
 stp_btn.Layout.Column = stp_btn_loc{2};
 
@@ -109,24 +112,47 @@ ax.NextPlot = 'add';
 ax.Color = [0 0 0];
 ax.XColor = [1 1 1];
 ax.YColor = [1 1 1];
-ax.YLim = [0 4];
+ax.YLim = [0 1];
 ax.Title.Color = [1 0 1];
 ax.Title.FontSize = 12;
 ax.Title.FontWeight = 'normal';
 ax.Title.String = '';
 ax.XAxis.Visible  = 'off';
-ax.YTick = [1 2 3];
-ax.YTickLabel = {'Sensor','Piezo','Piezo State'};
+ax.YTick = [0];
 ax.XTick = [];
+ax.YTickLabel = {'Sensor'};
 ax.LineWidth = 1;
 
 nan_vec = nan(n_disp,1);
-plot(ax,1:n_disp,nan_vec,'c');
-plot(ax,1:n_disp,nan_vec,'y');
 plot(ax,1:n_disp,nan_vec,'m');
-ax.Children(2).LineWidth = 1;
-ax.Children(3).LineWidth = 1;
 ax.Children(1).LineWidth = 1;
+text(ax,n_disp-(n_disp/10),0.5,'NAN','Color','m','FontSize',14);
+
+
+% main axes
+ax2 = axes(gl);
+ax2.Layout.Row = ax2_loc{1};
+ax2.Layout.Column = ax2_loc{2};
+ax2.NextPlot = 'add';
+ax2.Color = [0 0 0];
+ax2.XColor = [1 1 1];
+ax2.YColor = [1 1 1];
+ax2.YLim = [-0.1 1.1];
+ax2.Title.Color = [1 0 1];
+ax2.Title.FontSize = 12;
+ax2.Title.FontWeight = 'normal';
+ax2.Title.String = '';
+ax2.XAxis.Visible  = 'off';
+ax2.YTick = [0];
+ax2.YTickLabel = {'Piezo'};
+ax2.XTick = [];
+ax2.LineWidth = 1;
+
+nan_vec = nan(n_disp,1);
+plot(ax2,1:n_disp,nan_vec,'c');
+plot(ax2,1:n_disp,nan_vec,'y');
+ax2.Children(1).LineWidth = 1;
+ax2.Children(2).LineWidth = 1;
 
 wave_hdr = uilabel(gl, ...
     'Text','Wave Params:',...
@@ -213,6 +239,15 @@ rep_edit = uieditfield(gl, 'Value','5', ...
     'FontColor',[0 1 0]);
 rep_edit.Layout.Row = rep_edit_loc{1};
 rep_edit.Layout.Column = rep_edit_loc{2};
+
+% set parameters button
+next_btn = uibutton(gl,'state',...
+    'BackgroundColor',[0 0 0],...
+    'Text', 'Next',...
+    'FontColor',[0 1 0],...
+    'Value', false);
+next_btn.Layout.Row = next_btn_loc{1};
+next_btn.Layout.Column = next_btn_loc{2};
 
 end
 

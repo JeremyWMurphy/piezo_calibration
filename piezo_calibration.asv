@@ -1,0 +1,195 @@
+function[] = piezo_calibration()
+
+voltages = 1 linspace(0.1,1,19);
+step_size = 50;
+steps = 50:step_size:1000;
+
+% parameters
+serial_port = 'COM6';
+teensy_fs = 2e3;
+n_disp = 5 * teensy_fs;
+up_every = 2000;
+
+ntrials = 5;
+iti = 1;
+
+teensy_stim = '<P,1>';
+teensy_run_on = '<R,1>';
+teensy_run_off = '<R,0>';
+
+f = make_ui_figure_calibrate(n_disp);
+
+gl = get(f,'Children');
+
+ax = gl.Children(1);
+ax2 = gl.Children(2);
+
+id_field = gl.Children(3);
+pth_field = gl.Children(4);
+btn_set = gl.Children(9);
+btn_next = gl.Children(23);
+
+% serial to talk to teensy waveform generator
+s = serialport(serial_port,115200);
+write_serial(s,teensy_run_off); % turn off streaming data and wave presenting if it's on for some reason
+s.flush;
+
+set(f, 'CloseRequestFcn', @(src,evt) window_close(src,evt,s));
+
+chan_type = gl.Children(12).Value;
+wave_type = gl.Children(14).Value;
+dur_in = gl.Children(16).Value;
+ipi_in = gl.Children(18).Value;
+base_in = gl.Children(20).Value;
+npulse_in = gl.Children(22).Value;
+
+%%
+
+save_pth = [pth_field.Text id_field.Value];
+mkdir(save_pth);
+
+s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt,f, ax, ax2, up_every));
+pause(1)
+write_serial(s,teensy_run_on)
+
+go_on = true;
+while go_on
+
+    if btn_set.Value
+        chan_type = gl.Children(12).Value;
+        wave_type = gl.Children(14).Value;
+        dur_in = gl.Children(16).Value;
+        ipi_in = gl.Children(18).Value;
+        base_in = gl.Children(20).Value;
+        npulse_in = gl.Children(22).Value;
+        btn_set.Value = false;
+    end
+
+    if f.UserData.state == 1 % cal sensor
+
+        cals_fid = fopen([save_pth '\sensor_calibration_data.csv'],'w');
+        fprintf(cals_fid,'Distance, Voltage\n');
+
+        ax.Title.String = 'Move the sensor so it''s near the minimum voltage, then press any key';
+        
+        while ~btn_next.Value
+            pause(0.1)
+        end
+        btn_next.Value = false;
+
+        for s = 1:numel(steps)
+            
+            if f.UserData.state == 3
+                break
+            end
+
+            ax.Title.String = ['Move ' num2str(step_size) 'um to'  num2str(steps(s)) 'um, then press any key'];
+            while ~btn_next.Value
+                pause(0.1)
+                if f.UserData.state == 3
+                    break
+                end
+            end
+            
+            btn_next.Value = false;
+            val = f.UserData.sensor_voltage;
+            fprintf(cals_fid,[num2str(steps(s)) ', ' num2str(val) '\n']);
+
+        end
+
+        fclose(cals_fid);
+        ax.Title.String = 'Done ...';
+        pause(3)
+        f.UserData.state = 0;
+
+    elseif f.UserData.state == 2 % cal piezo
+
+        for v = 1:numel(voltages)
+
+            configureCallback(s, 'off');
+
+            v_str = num2str(voltages(v));
+            v_str = strrep(v_str,'.','pt');
+            fid = fopen([save_pth '\piezo_calibration_data_' v_str 'V.csv'],'w');
+
+            s.configureCallback('byte',up_every, @(src,evt) plotAndSaveSerialData(src,evt,f,ax,ax2,up_every,fid));
+
+            % tell the teensy to output this much
+            v_out = num2str(round(interp1([0,5],[0,4095],voltages(v))));
+            msg_out = ['<W,' chan_type ',' wave_type ',' dur_in ',' v_out ',' ipi_in ',' npulse_in ',' base_in '>'];
+            write_serial(s,msg_out);
+            ax.Title.String = ['Now Doing Voltage ' num2str(voltages(v))];
+        
+
+            for t = 1:ntrials
+
+                ax.Title.String = ['Now Doing Voltage ' num2str(voltages(v)) ', Trial ' num2str(t) ' of ' num2str(ntrials)];
+                pause(iti)
+                write_serial(s,teensy_stim)
+
+                if f.UserData.state == 3
+                    break
+                end
+
+            end
+
+            pause(1)
+
+            configureCallback(s, 'off');
+            s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt,f, ax, ax2, up_every));
+            fclose(fid);
+
+            if f.UserData.state == 3
+                break
+            end
+
+        end
+
+        f.UserData.state = 0;
+        ax.Title.String = '';
+
+    elseif f.UserData.state == 3 % quit
+        go_on = false;
+    end
+
+    pause(0.1)
+
+end
+
+fclose('all');
+%stop io
+s.configureCallback('off')
+write(s,'<P,0>','string'); % no stims
+write(s,'<R,0>','string'); % idle
+clear s
+% get rig of figure(s)
+all_fig = findall(0, 'type', 'figure');
+close(all_fig)
+
+end
+
+function[] = write_serial(s,msg)
+write(s,msg,'string');
+end
+
+%% on window close
+function[] = window_close(src,~,s)
+
+fclose('all');
+configureCallback(s, 'off');
+%stop io
+write(s,'<P,0>','string'); % no stims
+write(s,'<R,0>','string'); % idle
+clear s
+delete(src);
+
+end
+
+
+
+
+
+
+
+
+

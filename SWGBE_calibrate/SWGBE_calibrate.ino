@@ -4,8 +4,13 @@
 #include <Wire.h>
 
 const uint Fs = 2000; // sampling rate
-const uint analogInPin = 16;
+const uint analogInPin = 14;
 const bool reportData = true;
+
+const uint IDLE = 0;
+const uint PRESENT = 1;
+const uint TRIALEND = 2;
+volatile uint State = IDLE;
 
 // waveform parameters to be set over serial for each of the 4 DAC channels
 volatile uint waveType[4] = {1,1,1,1}; // wave types: 0 = whale, 1 = square
@@ -30,7 +35,7 @@ volatile uint gaussCntr[4] = { 0, 0, 0, 0 };    // tracking gauss stim
 volatile uint waveParams[7] = {0,0,0,0,0,0,0};
 volatile bool inIpi[4] = {false,false,false,false};
 volatile bool inBase[4] = {false,false,false,false};
-volatile bool stimOn[4] = {false,false,false,false};
+volatile bool stimOn[4] = {true,true,true,true};
 volatile uint curVal[4] = {0,0,0,0};
 volatile uint chanSelect = 0; // 
 
@@ -83,18 +88,18 @@ void setup() {
 
 }
 
-// functions called by timer should be short, run as quickly as
-// possible, and should avoid calling other functions if possible.
-
 void waveRun(){
-  
   if (run){
-    if (present){
-      waveWrite(); 
-    }
+    switch (State){
+      case PRESENT:
+        waveWrite(); 
+        break;
+      case TRIALEND: 
+        endOfTrialCleanUp();
+        break; 
+    }    
     queueTelemetry();
   }
-
 }
 
 void waveWrite() {
@@ -202,9 +207,29 @@ void waveWrite() {
       // Still running...
     } else {
       stimEnd = true;
-      present = false;
+      State = TRIALEND;
     }
   }
+}
+
+void endOfTrialCleanUp(){
+  // general end of trial/state reset
+    for (int i = 0; i < 4; i++) {
+      stimOn[i] = true;
+      inBase[i] = true;
+      BaseCntr[i] = 0;
+      repCntr[i] = 0;
+      whaleCntr[i] = 0;
+      gaussCntr[i] = 0;
+      gaussPhase[i] = 0.0;
+      wavIncrmntr[i] = 0;
+      inIpi[i] = false;
+      ipiCntr[i] = 0;
+      curVal[i] = 0;
+    }
+    stimEnd = false;
+    State = 0;
+
 }
 
 void recvSerial() {
@@ -255,7 +280,7 @@ void parseData() {
     } else if (msgCode == 'P') {                                                             
       ptr = strtok(NULL, ",");
       noInterrupts();
-      present = atoi(ptr);
+      State = atoi(ptr);
       interrupts();
     
     } else if (msgCode == 'W') {  
@@ -314,7 +339,7 @@ void queueTelemetry() {
   TelemetryPacket pack;
   pack.val0    = curVal[0];
   pack.val1    = analogRead(analogInPin); 
-  pack.val2    = !stimEnd;
+  pack.val2    = State;
   telemetryQueue.push(pack);
 }
 
@@ -339,7 +364,7 @@ void loop(){
       Serial.print("<");
       Serial.print(outbound.val0);       Serial.print(",");
       Serial.print(outbound.val1);       Serial.print(",");
-      Serial.print(outbound.val2);       Serial.print(",");
+      Serial.print(outbound.val2);
       Serial.println(">");
     }
   }

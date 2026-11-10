@@ -1,6 +1,6 @@
 function[] = piezo_calibration()
 
-voltages = linspace(0.1,5,10);
+voltages = linspace(0.1,1,19);
 step_size = 50;
 steps = 50:step_size:1000;
 
@@ -10,24 +10,24 @@ teensy_fs = 2e3;
 n_disp = 5 * teensy_fs;
 up_every = 2000;
 
-ntrials = 50;
-iti = 3;
+ntrials = 500;
+iti = 1;
 
 teensy_stim = '<P,1>';
 teensy_run_on = '<R,1>';
 teensy_run_off = '<R,0>';
 
-f = make_ui_figure(n_disp);
+f = make_ui_figure_calibrate(n_disp);
 
 gl = get(f,'Children');
 
 ax = gl.Children(1);
+ax2 = gl.Children(2);
 
-pth_field = gl.Children(3);
-btn_set = gl.Children(8);
-
-save_pth = pth_field.Text;
-mkdir(save_pth);
+id_field = gl.Children(3);
+pth_field = gl.Children(4);
+btn_set = gl.Children(9);
+btn_next = gl.Children(23);
 
 % serial to talk to teensy waveform generator
 s = serialport(serial_port,115200);
@@ -36,16 +36,19 @@ s.flush;
 
 set(f, 'CloseRequestFcn', @(src,evt) window_close(src,evt,s));
 
-chan_type = gl.Children(11).Value;
-wave_type = gl.Children(13).Value;
-dur_in = gl.Children(15).Value;
-ipi_in = gl.Children(17).Value;
-base_in = gl.Children(19).Value;
-npulse_in = gl.Children(21).Value;
+chan_type = gl.Children(12).Value;
+wave_type = gl.Children(14).Value;
+dur_in = gl.Children(16).Value;
+ipi_in = gl.Children(18).Value;
+base_in = gl.Children(20).Value;
+npulse_in = gl.Children(22).Value;
 
 %%
 
-s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt,f, ax, up_every));
+save_pth = [pth_field.Text id_field.Value];
+mkdir(save_pth);
+
+s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt,f, ax, ax2, up_every));
 pause(1)
 write_serial(s,teensy_run_on)
 
@@ -53,13 +56,13 @@ go_on = true;
 while go_on
 
     if btn_set.Value
+        chan_type = gl.Children(12).Value;
+        wave_type = gl.Children(14).Value;
+        dur_in = gl.Children(16).Value;
+        ipi_in = gl.Children(18).Value;
+        base_in = gl.Children(20).Value;
+        npulse_in = gl.Children(22).Value;
         btn_set.Value = false;
-        chan_type = gl.Children(11).Value;
-        wave_type = gl.Children(13).Value;
-        dur_in = gl.Children(15).Value;
-        ipi_in = gl.Children(17).Value;
-        base_in = gl.Children(19).Value;
-        npulse_in = gl.Children(21).Value;
     end
 
     if f.UserData.state == 1 % cal sensor
@@ -67,20 +70,35 @@ while go_on
         cals_fid = fopen([save_pth '\sensor_calibration_data.csv'],'w');
         fprintf(cals_fid,'Distance, Voltage\n');
 
-        ax.Title.String('Move the sensor so it''s at the minimum voltage, then press any key')
-        waitforbuttonpress
-        for s = 1:num(steps)
+        ax.Title.String = 'Move the sensor so it''s near the minimum voltage, then press any key';
+        
+        while ~btn_next.Value
+            pause(0.1)
+        end
+        btn_next.Value = false;
+
+        for s = 1:numel(steps)
+            
             if f.UserData.state == 3
                 break
             end
-            ax.Title.String = ['Move Down ' num2str(step_size) 'um to'  num2str(steps(s)) 'um'];
-            waitforbuttonpress
+
+            ax.Title.String = ['Move ' num2str(step_size) 'um to'  num2str(steps(s)) 'um, then press any key'];
+            while ~btn_next.Value
+                pause(0.1)
+                if f.UserData.state == 3
+                    break
+                end
+            end
+            
+            btn_next.Value = false;
             val = f.UserData.sensor_voltage;
             fprintf(cals_fid,[num2str(steps(s)) ', ' num2str(val) '\n']);
+
         end
 
         fclose(cals_fid);
-        ax.Title.String('Done ...')
+        ax.Title.String = 'Done ...';
         pause(3)
         f.UserData.state = 0;
 
@@ -94,13 +112,14 @@ while go_on
             v_str = strrep(v_str,'.','pt');
             fid = fopen([save_pth '\piezo_calibration_data_' v_str 'V.csv'],'w');
 
-            s.configureCallback('byte',config.up_every, @(src,evt) plotAndSaveSerialData(src,evt,f,ax,up_every,fid));
+            s.configureCallback('byte',up_every, @(src,evt) plotAndSaveSerialData(src,evt,f,ax,ax2,up_every,fid));
 
             % tell the teensy to output this much
             v_out = num2str(round(interp1([0,5],[0,4095],voltages(v))));
             msg_out = ['<W,' chan_type ',' wave_type ',' dur_in ',' v_out ',' ipi_in ',' npulse_in ',' base_in '>'];
             write_serial(s,msg_out);
             ax.Title.String = ['Now Doing Voltage ' num2str(voltages(v))];
+        
 
             for t = 1:ntrials
 
@@ -114,6 +133,10 @@ while go_on
 
             end
 
+            pause(1)
+
+            configureCallback(s, 'off');
+            s.configureCallback('byte',up_every, @(src,evt) plotSerialData(src, evt,f, ax, ax2, up_every));
             fclose(fid);
 
             if f.UserData.state == 3
@@ -121,6 +144,9 @@ while go_on
             end
 
         end
+
+        f.UserData.state = 0;
+        ax.Title.String = '';
 
     elseif f.UserData.state == 3 % quit
         go_on = false;
@@ -130,17 +156,17 @@ while go_on
 
 end
 
-end
-
 fclose('all');
 %stop io
-configureCallback(s, 'off');
+s.configureCallback('off')
 write(s,'<P,0>','string'); % no stims
 write(s,'<R,0>','string'); % idle
 clear s
 % get rig of figure(s)
 all_fig = findall(0, 'type', 'figure');
 close(all_fig)
+
+end
 
 function[] = write_serial(s,msg)
 write(s,msg,'string');
